@@ -1,0 +1,127 @@
+<?php
+
+/*
+*	SOAP Client written in PHP5
+* 	Soap in PHP 5: http://www.php.net/manual/en/class.soapclient.php
+*   SoapClient calls: http://www.php.net/manual/en/soapclient.soapcall.php
+*/
+
+/**
+* Implements hook_menu()
+*/
+function php_soap_client_menu() {
+
+  $items = array();
+  
+  $items['php-soap-client'] = array(
+    'title' => t('PHP5 Soap client'),
+    'description' => t('Soap client'),
+    'page callback' => 'php_soap_client_page_callback_soap_client',
+    'access arguments' => array('access soap'),
+    'type' => MENU_CALLBACK
+  );
+  
+  return $items;
+
+}
+
+/* 
+* Extend SoapClient so we can use Port 105
+* Source link: http://www.victorstanciu.ro/php-soapclient-port-bug-workaround/
+*/
+
+class My_SoapClient extends SoapClient {
+ 
+    public function __construct($wsdl, $options) {
+        $url = parse_url($wsdl);
+        if ($url['port']) {
+            $this->_port = $url['port'];
+        }
+        return parent::__construct($wsdl, $options);
+    }
+ 
+    public function __doRequest($request, $location, $action, $version) {
+        $parts = parse_url($location);
+        if ($this->_port) {
+            $parts['port'] = $this->_port;
+        }
+        $location = $this->buildLocation($parts);
+ 
+        $return = parent::__doRequest($request, $location, $action, $version);
+        return $return;
+    }
+ 
+    public function buildLocation($parts = array()) {
+        $location = '';
+ 
+        if (isset($parts['scheme'])) {
+            $location .= $parts['scheme'].'://';
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            $location .= $parts['user'].':'.$parts['pass'].'@';
+        }
+        $location .= $parts['host'];
+        if (isset($parts['port'])) {
+            $location .= ':'.$parts['port'];
+        }
+        $location .= $parts['path'];
+        if (isset($parts['query'])) {
+            $location .= '?'.$parts['query'];
+        }
+ 
+        return $location;
+    }
+}
+
+/**
+* Implements custom page callback for soap client
+*/
+function php_soap_client_page_callback_soap_client() {
+	// GLOBALS
+
+	$soap_path = "SOAP/Client.php";
+	$lowThreshold = 10; // Unused: threshold at which to trigger a low inventory alert
+
+	$capacity = array(
+	  'endpoint' => 'http://63.118.78.84:105/webservice2/CapacityWebService.asmx?WSDL',
+	  'oid'      => 133, // IDs consolidated by Capacity on 10/13/06
+	  'group_id' => 133,
+	  'www_pwd'  => 'broccoli',
+	  'delimiter_field' => "|",
+	  'delimiter_line' => "\n",
+	  'processTime' => '09:55:00',
+	  );
+	// Test connection with Google API WSDL
+	// $capacity['endpoint'] = 'http://api.google.com/GoogleSearch.wsdl';
+	  
+	// Enable all errors for debugging
+	error_reporting( E_ALL );
+	
+	// Ensure nu_soap library exsists
+	if (!file_exists($soap_path)) {
+	  //die('An error has occurred initializing the soap server.');
+	}
+	// Initialize SOAP
+	//require_once ($soap_path);
+
+	// URI delivered to web service. Catch if there are network errors
+	try {  
+		$client = @new SoapClient($capacity['endpoint'], array("trace" => 1, "exceptions" => 1));  
+	} catch (SoapFault $E) {  
+		// watchdog('error', $E->faultstring);
+		echo $E->faultstring;
+	}  
+	watchdog("notification", "Connected to WSDL");
+
+	// pull data
+	$params = array('ownerId' => $capacity['oid'], 'password' => $capacity['www_pwd']);
+	$result = $client->__soapCall('GetInventoryByOwnerid', array($params));
+	echo "<pre>\n";
+	print_r($result);
+	// Get all available functions
+	// var_dump($client->__getFunctions());
+	echo "</pre>";
+
+}
+
+?>
